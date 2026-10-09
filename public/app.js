@@ -1,3 +1,4 @@
+
 (() => {
   const $ = id => document.getElementById(id);
 
@@ -16,16 +17,19 @@
     friendsButton: null,
     socialModal: null,
     privateFriend: null,
-    privateTypingTimer: null
+    privateTypingTimer: null,
+    friendsContent: null
   };
 
   const AVATARS = ['🟣', '🦊', '🐸', '🐼', '🐱', '👾', '👻', '🐺', '🌙', '⭐', '🔥', '💜', '🎧'];
 
   function toast(message) {
-    $('toast').textContent = message;
-    $('toast').classList.add('show');
+    const el = $('toast');
+    if (!el) return;
+    el.textContent = message;
+    el.classList.add('show');
     clearTimeout(state.toastTimer);
-    state.toastTimer = setTimeout(() => $('toast').classList.remove('show'), 2800);
+    state.toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
   }
 
   async function api(path, body) {
@@ -111,6 +115,7 @@
     const el = document.createElement('button');
     el.type = 'button';
     el.textContent = text;
+
     style(el, {
       border: secondary ? '1px solid #39344f' : '1px solid #8b70ff',
       background: secondary ? '#201d30' : '#7655ed',
@@ -119,8 +124,11 @@
       padding: '9px 12px',
       cursor: 'pointer',
       fontSize: '12px',
-      fontWeight: '700'
+      fontWeight: '700',
+      touchAction: 'manipulation',
+      WebkitTapHighlightColor: 'transparent'
     });
+
     el.addEventListener('click', action);
     return el;
   }
@@ -130,6 +138,7 @@
     el.placeholder = placeholder;
     el.value = value;
     el.maxLength = maxLength;
+
     style(el, {
       width: '100%',
       boxSizing: 'border-box',
@@ -140,8 +149,9 @@
       borderRadius: '11px',
       outline: 'none',
       font: 'inherit',
-      fontSize: '13px'
+      fontSize: '16px'
     });
+
     return el;
   }
 
@@ -151,6 +161,7 @@
     el.value = value;
     el.maxLength = maxLength;
     el.rows = 3;
+
     style(el, {
       width: '100%',
       boxSizing: 'border-box',
@@ -161,13 +172,15 @@
       borderRadius: '11px',
       resize: 'vertical',
       font: 'inherit',
-      fontSize: '13px'
+      fontSize: '16px'
     });
+
     return el;
   }
 
   function section(title) {
     const wrap = document.createElement('section');
+
     style(wrap, {
       marginTop: '18px',
       paddingTop: '14px',
@@ -176,6 +189,7 @@
 
     const heading = document.createElement('div');
     heading.textContent = title;
+
     style(heading, {
       color: '#b8afd9',
       fontSize: '11px',
@@ -191,6 +205,7 @@
 
   function userRow(user, actions = []) {
     const row = document.createElement('div');
+
     style(row, {
       display: 'flex',
       alignItems: 'center',
@@ -205,6 +220,7 @@
 
     const avatar = document.createElement('div');
     avatar.textContent = user.avatar || (user.username || '?').slice(0, 1).toUpperCase();
+
     style(avatar, {
       width: '38px',
       height: '38px',
@@ -222,6 +238,7 @@
 
     const name = document.createElement('div');
     name.textContent = user.displayName || user.username;
+
     style(name, {
       color: '#f2f0ff',
       fontSize: '13px',
@@ -231,27 +248,39 @@
 
     const sub = document.createElement('div');
     sub.textContent = user.username ? `@${user.username}` : '';
-    style(sub, { color: '#8d87a7', fontSize: '11px', marginTop: '3px' });
+
+    style(sub, {
+      color: '#8d87a7',
+      fontSize: '11px',
+      marginTop: '3px'
+    });
 
     info.append(name, sub);
 
     const actionWrap = document.createElement('div');
-    style(actionWrap, { display: 'flex', gap: '6px', flexWrap: 'wrap' });
-    actions.forEach(a => actionWrap.appendChild(a));
+    style(actionWrap, {
+      display: 'flex',
+      gap: '6px',
+      flexWrap: 'wrap'
+    });
 
+    actions.forEach(a => actionWrap.appendChild(a));
     row.append(avatar, info, actionWrap);
+
     return row;
   }
 
   function emptyText(message) {
     const el = document.createElement('div');
     el.textContent = message;
+
     style(el, {
       color: '#85809e',
       fontSize: '12px',
       padding: '7px 0',
       lineHeight: '1.6'
     });
+
     return el;
   }
 
@@ -259,8 +288,10 @@
 
   function closeModal() {
     if (state.socialModal) state.socialModal.remove();
+
     state.socialModal = null;
     state.privateFriend = null;
+
     clearInterval(state.privateTypingTimer);
     state.privateTypingTimer = null;
   }
@@ -269,22 +300,26 @@
     closeModal();
 
     const overlay = document.createElement('div');
+
     style(overlay, {
       position: 'fixed',
       inset: '0',
-      zIndex: '10000',
-      background: '#080710d9',
+      zIndex: '2147483646',
+      background: '#080710e8',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      padding: '16px',
+      padding: '12px',
+      paddingTop: 'max(12px, env(safe-area-inset-top))',
+      paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
       boxSizing: 'border-box'
     });
 
     const panel = document.createElement('div');
+
     style(panel, {
       width: `min(${width}px, 100%)`,
-      maxHeight: 'min(760px, 90vh)',
+      maxHeight: 'min(760px, 90dvh)',
       overflow: 'auto',
       boxSizing: 'border-box',
       background: '#11101b',
@@ -293,10 +328,12 @@
       borderRadius: '20px',
       padding: '20px',
       boxShadow: '0 25px 90px #000a',
-      fontFamily: 'inherit'
+      fontFamily: 'inherit',
+      overscrollBehavior: 'contain'
     });
 
     const header = document.createElement('div');
+
     style(header, {
       display: 'flex',
       justifyContent: 'space-between',
@@ -307,17 +344,21 @@
 
     const title = document.createElement('div');
     title.textContent = titleText;
+
     style(title, { fontSize: '20px', fontWeight: '800' });
 
     const close = button('✕', closeModal, true);
     header.append(title, close);
     panel.appendChild(header);
     overlay.appendChild(panel);
+
     overlay.addEventListener('click', e => {
       if (e.target === overlay) closeModal();
     });
+
     document.body.appendChild(overlay);
     state.socialModal = overlay;
+
     return panel;
   }
 
@@ -338,29 +379,46 @@
 
     const label = document.createElement('div');
     label.textContent = 'Avatar';
+
     style(label, { color: '#aaa5c5', fontSize: '12px', marginBottom: '8px' });
     panel.appendChild(label);
 
     const avatarRow = document.createElement('div');
-    style(avatarRow, { display: 'flex', gap: '7px', flexWrap: 'wrap', marginBottom: '18px' });
-    let selectedAvatar = AVATARS.includes(current.avatar) ? current.avatar : '🟣';
 
+    style(avatarRow, {
+      display: 'flex',
+      gap: '7px',
+      flexWrap: 'wrap',
+      marginBottom: '18px'
+    });
+
+    let selectedAvatar = AVATARS.includes(current.avatar) ? current.avatar : '🟣';
     const avatarButtons = [];
+
     AVATARS.forEach(avatar => {
       const b = button(avatar, () => {
         selectedAvatar = avatar;
+
         avatarButtons.forEach(item => {
           item.style.outline = item.textContent === selectedAvatar ? '2px solid #a994ff' : 'none';
         });
       }, true);
-      style(b, { fontSize: '20px', padding: '8px', outline: avatar === selectedAvatar ? '2px solid #a994ff' : 'none' });
+
+      style(b, {
+        fontSize: '20px',
+        padding: '8px',
+        outline: avatar === selectedAvatar ? '2px solid #a994ff' : 'none'
+      });
+
       avatarButtons.push(b);
       avatarRow.appendChild(b);
     });
+
     panel.appendChild(avatarRow);
 
     const displayLabel = document.createElement('div');
     displayLabel.textContent = 'Display name';
+
     style(displayLabel, { color: '#aaa5c5', fontSize: '12px', marginBottom: '7px' });
     panel.appendChild(displayLabel);
 
@@ -369,6 +427,7 @@
 
     const bioLabel = document.createElement('div');
     bioLabel.textContent = 'About you (160 characters max)';
+
     style(bioLabel, { color: '#aaa5c5', fontSize: '12px', margin: '15px 0 7px' });
     panel.appendChild(bioLabel);
 
@@ -407,6 +466,7 @@
 
       const avatar = document.createElement('div');
       avatar.textContent = profile.avatar || '🟣';
+
       style(avatar, {
         width: '76px',
         height: '76px',
@@ -421,14 +481,22 @@
 
       const name = document.createElement('div');
       name.textContent = profile.displayName || profile.username;
+
       style(name, { textAlign: 'center', fontSize: '22px', fontWeight: '800' });
 
       const handle = document.createElement('div');
       handle.textContent = `@${profile.username}`;
-      style(handle, { textAlign: 'center', color: '#a49bbf', fontSize: '12px', marginTop: '5px' });
+
+      style(handle, {
+        textAlign: 'center',
+        color: '#a49bbf',
+        fontSize: '12px',
+        marginTop: '5px'
+      });
 
       const status = document.createElement('div');
       status.textContent = profile.online ? '● Online' : '○ Offline';
+
       style(status, {
         textAlign: 'center',
         color: profile.online ? '#76e0a0' : '#8d87a7',
@@ -438,6 +506,7 @@
 
       const bio = document.createElement('div');
       bio.textContent = profile.bio || 'This user has not added a bio yet.';
+
       style(bio, {
         textAlign: 'center',
         color: '#c6c0da',
@@ -467,6 +536,7 @@
               toast(err.message);
             }
           });
+
           style(add, { flex: '1' });
           actions.appendChild(add);
         }
@@ -483,6 +553,7 @@
   function renderPrivateMessage(list, msg) {
     const mine = msg.fromId === state.user.id;
     const row = document.createElement('div');
+
     style(row, {
       display: 'flex',
       justifyContent: mine ? 'flex-end' : 'flex-start',
@@ -491,6 +562,7 @@
 
     const bubble = document.createElement('div');
     bubble.textContent = msg.text;
+
     style(bubble, {
       maxWidth: '82%',
       padding: '10px 12px',
@@ -508,7 +580,13 @@
       hour: '2-digit',
       minute: '2-digit'
     });
-    style(time, { fontSize: '10px', opacity: '.7', marginTop: '4px', textAlign: mine ? 'right' : 'left' });
+
+    style(time, {
+      fontSize: '10px',
+      opacity: '.7',
+      marginTop: '4px',
+      textAlign: mine ? 'right' : 'left'
+    });
 
     const wrap = document.createElement('div');
     wrap.append(bubble, time);
@@ -526,6 +604,7 @@
     state.privateFriend = friend;
 
     let history;
+
     try {
       history = await api(`/api/private/${encodeURIComponent(friend.id)}`);
     } catch (err) {
@@ -539,10 +618,18 @@
 
     const subtitle = document.createElement('div');
     subtitle.textContent = `Private conversation · @${friend.username}`;
-    style(subtitle, { color: '#938baa', fontSize: '12px', marginTop: '-10px', marginBottom: '12px' });
+
+    style(subtitle, {
+      color: '#938baa',
+      fontSize: '12px',
+      marginTop: '-10px',
+      marginBottom: '12px'
+    });
+
     panel.appendChild(subtitle);
 
     const list = document.createElement('div');
+
     style(list, {
       height: 'min(42vh, 340px)',
       minHeight: '180px',
@@ -552,6 +639,7 @@
       border: '1px solid #29273b',
       borderRadius: '13px'
     });
+
     panel.appendChild(list);
 
     if (!history.messages.length) {
@@ -564,7 +652,14 @@
 
     const typing = document.createElement('div');
     typing.textContent = '';
-    style(typing, { height: '20px', color: '#b9a8ff', fontSize: '11px', paddingTop: '5px' });
+
+    style(typing, {
+      height: '20px',
+      color: '#b9a8ff',
+      fontSize: '11px',
+      paddingTop: '5px'
+    });
+
     panel.appendChild(typing);
 
     const form = document.createElement('form');
@@ -573,6 +668,7 @@
     const input = field('Write a private message…', '', 1000);
     const send = button('Send', () => {});
     send.type = 'submit';
+
     style(send, { flexShrink: '0' });
 
     form.append(input, send);
@@ -593,11 +689,13 @@
         toId: friend.id,
         typing: false
       });
+
       input.focus();
     });
 
     input.addEventListener('input', () => {
       if (!state.privateFriend || !state.socket) return;
+
       state.socket.emit('private:typing', {
         toId: state.privateFriend.id,
         typing: input.value.length > 0
@@ -607,49 +705,80 @@
     input.focus();
   }
 
-  // ---------- FRIENDS PANEL ----------
+  // ---------- FRIENDS PANEL: MOBILE-FRIENDLY ----------
 
   function createFriendsInterface() {
-    if (state.friendsPanel) return;
+    if (state.friendsPanel && state.friendsButton) {
+      if (!state.friendsButton.isConnected) document.body.appendChild(state.friendsButton);
+      if (!state.friendsPanel.isConnected) document.body.appendChild(state.friendsPanel);
+      return;
+    }
 
     const buttonEl = button('♧ Friends', async () => {
       const opening = panel.style.display === 'none';
-      panel.style.display = opening ? 'block' : 'none';
+      panel.style.display = opening ? 'flex' : 'none';
+      buttonEl.setAttribute('aria-expanded', opening ? 'true' : 'false');
+
       if (opening) await refreshFriends();
     });
 
+    buttonEl.id = 'strangerwave-friends-button';
+    buttonEl.setAttribute('aria-label', 'Open friends');
+    buttonEl.setAttribute('aria-expanded', 'false');
+
     style(buttonEl, {
       position: 'fixed',
-      right: '22px',
-      bottom: '22px',
-      zIndex: '9998',
-      borderRadius: '14px',
-      padding: '13px 18px',
-      fontSize: '13px',
-      boxShadow: '0 8px 30px #0005'
+      right: 'max(14px, env(safe-area-inset-right))',
+      bottom: 'calc(16px + env(safe-area-inset-bottom, 0px))',
+      zIndex: '2147483647',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      visibility: 'visible',
+      opacity: '1',
+      pointerEvents: 'auto',
+      touchAction: 'manipulation',
+      border: '1px solid #b5a3ff',
+      background: '#7655ed',
+      color: '#fff',
+      borderRadius: '16px',
+      padding: '14px 19px',
+      minHeight: '50px',
+      minWidth: '112px',
+      fontSize: '14px',
+      fontWeight: '800',
+      cursor: 'pointer',
+      boxShadow: '0 8px 30px #0009',
+      WebkitTapHighlightColor: 'transparent',
+      fontFamily: 'inherit'
     });
 
     const panel = document.createElement('div');
+    panel.id = 'strangerwave-friends-panel';
+
     style(panel, {
       display: 'none',
+      flexDirection: 'column',
       position: 'fixed',
-      right: '22px',
-      bottom: '82px',
-      zIndex: '9999',
-      width: 'min(420px, calc(100vw - 32px))',
-      maxHeight: 'min(700px, calc(100vh - 115px))',
+      right: 'max(10px, env(safe-area-inset-right))',
+      bottom: 'calc(78px + env(safe-area-inset-bottom, 0px))',
+      zIndex: '2147483646',
+      width: 'min(420px, calc(100vw - 20px))',
+      maxHeight: 'min(700px, calc(100dvh - 110px))',
       overflowY: 'auto',
+      overscrollBehavior: 'contain',
       boxSizing: 'border-box',
-      padding: '20px',
+      padding: '16px',
       background: '#11101b',
       color: '#f2f0ff',
-      border: '1px solid #302c45',
+      border: '1px solid #65558f',
       borderRadius: '20px',
-      boxShadow: '0 18px 65px #0009',
+      boxShadow: '0 18px 65px #000b',
       fontFamily: 'inherit'
     });
 
     const header = document.createElement('div');
+
     style(header, {
       display: 'flex',
       justifyContent: 'space-between',
@@ -659,31 +788,49 @@
     });
 
     const titleWrap = document.createElement('div');
+    style(titleWrap, { minWidth: '0', flex: '1' });
+
     const title = document.createElement('div');
     title.textContent = 'Your social space';
-    style(title, { fontSize: '20px', fontWeight: '800' });
+
+    style(title, { fontSize: '19px', fontWeight: '800' });
 
     const subtitle = document.createElement('div');
     subtitle.textContent = 'Friends, profiles and private chats';
-    style(subtitle, { fontSize: '11px', color: '#918ca9', marginTop: '4px' });
+
+    style(subtitle, {
+      fontSize: '11px',
+      color: '#918ca9',
+      marginTop: '4px'
+    });
+
     titleWrap.append(title, subtitle);
 
     const headerButtons = document.createElement('div');
-    style(headerButtons, { display: 'flex', gap: '6px' });
+    style(headerButtons, { display: 'flex', gap: '6px', flexShrink: '0' });
 
     headerButtons.append(
-      button('My profile', openMyProfile, true),
-      button('✕', () => { panel.style.display = 'none'; }, true)
+      button('Profile', openMyProfile, true),
+      button('✕', () => {
+        panel.style.display = 'none';
+        buttonEl.setAttribute('aria-expanded', 'false');
+      }, true)
     );
 
     header.append(titleWrap, headerButtons);
 
     const addSection = section('Add someone');
     const addRow = document.createElement('div');
-    style(addRow, { display: 'flex', gap: '8px' });
+
+    style(addRow, {
+      display: 'flex',
+      gap: '8px',
+      alignItems: 'stretch'
+    });
 
     const usernameInput = field('Enter username', '', 20);
-    const addButton = button('Send request', async () => {
+
+    const addButton = button('Send', async () => {
       const username = usernameInput.value.trim();
       if (!username) return toast('Enter a username first.');
 
@@ -698,33 +845,96 @@
     });
 
     style(usernameInput, { minWidth: '0', flex: '1' });
+    style(addButton, { flexShrink: '0', minHeight: '44px' });
+
     addRow.append(usernameInput, addButton);
     addSection.appendChild(addRow);
 
     usernameInput.addEventListener('keydown', e => {
-      if (e.key === 'Enter') addButton.click();
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addButton.click();
+      }
     });
 
     const currentChat = button('＋ Add current chat partner', async () => {
-      if (!state.partner || !state.matched) return toast('You are not in a chat right now.');
+      if (!state.partner || !state.matched) {
+        return toast('You are not in a chat right now.');
+      }
+
       try {
-        const result = await api('/api/friends/request', { username: state.partner.username });
+        const result = await api('/api/friends/request', {
+          username: state.partner.username
+        });
+
         toast(result.message);
         await refreshFriends();
       } catch (err) {
         toast(err.message);
       }
     }, true);
-    style(currentChat, { width: '100%', marginTop: '9px' });
+
+    style(currentChat, {
+      width: '100%',
+      minHeight: '44px',
+      marginTop: '9px'
+    });
+
     addSection.appendChild(currentChat);
 
     const content = document.createElement('div');
+
     panel.append(header, addSection, content);
     document.body.append(buttonEl, panel);
 
     state.friendsButton = buttonEl;
     state.friendsPanel = panel;
     state.friendsContent = content;
+
+    // Keep the floating button above normal page content.
+    // Re-append it when the chat view is displayed.
+    buttonEl.style.setProperty('position', 'fixed', 'important');
+    buttonEl.style.setProperty('z-index', '2147483647', 'important');
+    buttonEl.style.setProperty('display', 'flex', 'important');
+    buttonEl.style.setProperty('visibility', 'visible', 'important');
+    buttonEl.style.setProperty('opacity', '1', 'important');
+    buttonEl.style.setProperty('pointer-events', 'auto', 'important');
+
+    // On narrow screens, use slightly smaller panel padding.
+    const mobileStyle = document.createElement('style');
+    mobileStyle.id = 'strangerwave-friends-mobile-style';
+    mobileStyle.textContent = `
+      #strangerwave-friends-button {
+        position: fixed !important;
+        right: max(14px, env(safe-area-inset-right)) !important;
+        bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important;
+        z-index: 2147483647 !important;
+        display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+      }
+      #strangerwave-friends-panel {
+        z-index: 2147483646 !important;
+      }
+      @media (max-width: 480px) {
+        #strangerwave-friends-panel {
+          right: 10px !important;
+          width: calc(100vw - 20px) !important;
+          max-height: calc(100dvh - 105px) !important;
+          padding: 13px !important;
+        }
+        #strangerwave-friends-button {
+          min-height: 50px !important;
+          min-width: 112px !important;
+          font-size: 14px !important;
+        }
+      }
+    `;
+
+    if (!document.getElementById(mobileStyle.id)) {
+      document.head.appendChild(mobileStyle);
+    }
   }
 
   async function refreshFriends() {
@@ -750,20 +960,34 @@
 
   function renderFriends() {
     if (!state.friendsContent) return;
+
     const content = state.friendsContent;
     content.replaceChildren();
 
     const incoming = section(`Incoming requests (${state.friends.incoming.length})`);
-    if (!state.friends.incoming.length) incoming.appendChild(emptyText('No incoming requests.'));
+
+    if (!state.friends.incoming.length) {
+      incoming.appendChild(emptyText('No incoming requests.'));
+    }
+
     state.friends.incoming.forEach(request => {
       incoming.appendChild(userRow(request.user, [
-        button('Accept', () => friendAction('/api/friends/accept', { requestId: request.id }, 'Request accepted.')),
-        button('Decline', () => friendAction('/api/friends/decline', { requestId: request.id }, 'Request declined.'), true)
+        button('Accept', () =>
+          friendAction('/api/friends/accept', { requestId: request.id }, 'Request accepted.')
+        ),
+        button('Decline', () =>
+          friendAction('/api/friends/decline', { requestId: request.id }, 'Request declined.'),
+          true
+        )
       ]));
     });
 
     const outgoing = section(`Sent requests (${state.friends.outgoing.length})`);
-    if (!state.friends.outgoing.length) outgoing.appendChild(emptyText('No pending outgoing requests.'));
+
+    if (!state.friends.outgoing.length) {
+      outgoing.appendChild(emptyText('No pending outgoing requests.'));
+    }
+
     state.friends.outgoing.forEach(request => {
       outgoing.appendChild(userRow(request.user, [
         button('Pending', () => {}, true)
@@ -771,11 +995,15 @@
     });
 
     const friends = section(`Friends (${state.friends.friends.length})`);
-    if (!state.friends.friends.length) friends.appendChild(emptyText('Your friends will appear here when they accept your requests.'));
+
+    if (!state.friends.friends.length) {
+      friends.appendChild(emptyText('Your friends will appear here when they accept your requests.'));
+    }
 
     state.friends.friends.forEach(friend => {
       const presence = document.createElement('div');
       presence.textContent = friend.online ? '● Online' : '○ Offline';
+
       style(presence, {
         fontSize: '10px',
         color: friend.online ? '#76e0a0' : '#8d87a7',
@@ -787,12 +1015,14 @@
         button('Message', () => openPrivateChat(friend))
       ]);
 
-      const info = row.children[1];
-      info.appendChild(presence);
+      row.children[1].appendChild(presence);
 
       row.appendChild(button('Remove', async () => {
         if (!confirm(`Remove ${friend.username} from your friends?`)) return;
-        await friendAction('/api/friends/remove', { friendId: friend.id }, 'Friend removed.');
+
+        await friendAction('/api/friends/remove', {
+          friendId: friend.id
+        }, 'Friend removed.');
       }, true));
 
       friends.appendChild(row);
@@ -812,6 +1042,16 @@
     $('topStatus').textContent = `Signed in as ${state.user.username}`;
 
     createFriendsInterface();
+
+    // Make sure the floating button is attached to the page after login.
+    if (state.friendsButton && !state.friendsButton.isConnected) {
+      document.body.appendChild(state.friendsButton);
+    }
+
+    if (state.friendsPanel && !state.friendsPanel.isConnected) {
+      document.body.appendChild(state.friendsPanel);
+    }
+
     resetChat();
   }
 
@@ -826,6 +1066,7 @@
     state.friendsButton = null;
     state.friendsPanel = null;
     state.friendsContent = null;
+
     closeModal();
   }
 
@@ -859,7 +1100,9 @@
 
     state.socket.on('presence:update', () => refreshFriends());
 
-    state.socket.on('private:error', data => toast(data.error || 'Private message failed.'));
+    state.socket.on('private:error', data => {
+      toast(data.error || 'Private message failed.');
+    });
 
     state.socket.on('private:message', msg => {
       const friendId = msg.fromId === state.user.id ? msg.toId : msg.fromId;
@@ -870,9 +1113,11 @@
 
         if (list) {
           const empty = list.querySelector('div');
+
           if (empty && empty.textContent.includes('start of your private conversation')) {
             list.replaceChildren();
           }
+
           renderPrivateMessage(list, msg);
         }
       } else if (msg.fromId !== state.user.id) {
@@ -882,8 +1127,12 @@
 
     state.socket.on('private:typing', data => {
       if (!state.privateFriend || state.privateFriend.id !== data.fromId || !state.socialModal) return;
+
       const panel = state.socialModal.querySelector('div > div');
-      const typing = panel && Array.from(panel.children).find(el => el.textContent === 'Typing…' || el.textContent === '');
+      const typing = panel && Array.from(panel.children).find(el =>
+        el.textContent === 'Typing…' || el.textContent === ''
+      );
+
       if (typing) typing.textContent = data.typing ? 'Typing…' : '';
     });
 
@@ -915,7 +1164,9 @@
     });
 
     state.socket.on('chat:message', msg => addMessage(msg));
-    state.socket.on('chat:typing', data => $('typingLine').classList.toggle('hidden', !data.typing));
+    state.socket.on('chat:typing', data => {
+      $('typingLine').classList.toggle('hidden', !data.typing);
+    });
 
     state.socket.on('chat:ended', data => {
       const wasMatched = state.matched;
@@ -943,14 +1194,19 @@
 
   function scrollMessagesToBottom() {
     const el = $('messages');
-    requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
   }
 
   function addSystem(text) {
     const el = document.createElement('div');
     el.className = 'system-message';
     el.textContent = text;
-    el.style.cssText = 'align-self:center;max-width:85%;text-align:center;color:#8b88a3;font-size:10px;line-height:1.6;padding:10px 14px;background:#171624;border:1px solid #29273b;border-radius:10px;margin:4px 0;';
+
+    el.style.cssText =
+      'align-self:center;max-width:85%;text-align:center;color:#8b88a3;font-size:10px;line-height:1.6;padding:10px 14px;background:#171624;border:1px solid #29273b;border-radius:10px;margin:4px 0;';
+
     $('messages').appendChild(el);
     scrollMessagesToBottom();
   }
@@ -1009,8 +1265,10 @@
 
   $('messageForm').addEventListener('submit', e => {
     e.preventDefault();
+
     const text = $('messageInput').value.trim();
     if (!text || !state.matched) return;
+
     state.socket.emit('chat:message', { text });
     $('messageInput').value = '';
     state.socket.emit('chat:typing', false);
@@ -1018,6 +1276,7 @@
 
   $('messageInput').addEventListener('input', () => {
     const now = Date.now();
+
     if (now - state.lastTyping > 700 && state.socket) {
       state.socket.emit('chat:typing', $('messageInput').value.length > 0);
       state.lastTyping = now;
@@ -1026,6 +1285,7 @@
 
   $('reportBtn').addEventListener('click', async () => {
     if (!state.partner) return;
+
     const reason = prompt('Why are you reporting this user? (Keep it brief)');
     if (reason === null) return;
 
@@ -1034,6 +1294,7 @@
         targetId: state.partner.id || state.partner.username,
         reason: reason || 'Other'
       });
+
       toast('Report submitted.');
     } catch (err) {
       toast(err.message);
@@ -1042,15 +1303,18 @@
 
   $('blockBtn').addEventListener('click', () => {
     if (!state.partner || !confirm(`Block ${state.partner.username} and end this chat?`)) return;
+
     state.socket.emit('chat:block', state.partner.username);
     toast('User blocked.');
   });
 
   function logout() {
     if (state.socket) state.socket.disconnect();
+
     state.socket = null;
     state.token = null;
     state.user = null;
+
     localStorage.removeItem('sw_token');
     showAuth();
     setMode('login');
@@ -1064,6 +1328,7 @@
     try {
       const data = await api('/api/me');
       state.user = data.user;
+
       showChat();
       connectSocket();
       await refreshFriends();
