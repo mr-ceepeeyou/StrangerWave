@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b0b12"><title>StrangerWave — Random text chat</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar"><a class="brand" href="#" aria-label="StrangerWave home"><span class="brand-mark">S</span><span>stranger<span class="accent">wave</span></span></a><div class="top-right"><span class="live-dot"></span><span id="topStatus">A world of conversations</span></div></header>
+    <main>
+      <section id="authView" class="auth-layout">
+        <div class="hero"><div class="eyebrow"><span class="sparkle">✦</span> YOUR NEXT CONVERSATION STARTS HERE</div><h1>Talk to someone<br><span class="gradient-text">new.</span></h1><p class="hero-copy">One click. A new perspective. Meet people from anywhere in the world through simple, anonymous-feeling text chat.</p><div class="hero-stats"><div><strong>Worldwide</strong><span>Meet across borders</span></div><div><strong>Your choice</strong><span>Leave any time</span></div></div><div class="orb orb-one"></div><div class="orb orb-two"></div></div>
+        <div class="auth-card"><div class="auth-tabs"><button class="tab active" id="loginTab">Sign in</button><button class="tab" id="registerTab">Create account</button></div><div class="auth-heading"><h2 id="authTitle">Welcome back</h2><p id="authSubtitle">Sign in to find your next conversation.</p></div>
+          <form id="authForm"><label for="username">Username</label><input id="username" autocomplete="username" maxlength="20" minlength="3" placeholder="e.g. moonlight_7" required><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" minlength="8" maxlength="128" placeholder="At least 8 characters" required><div id="confirmWrap" class="hidden"><label for="confirmPassword">Confirm password</label><input id="confirmPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" placeholder="Type it again"></div><button class="primary-btn full" id="authSubmit" type="submit">Sign in <span>→</span></button><p id="authError" class="form-error" role="alert"></p></form><div class="secure-note"><span>◇</span> Your password is stored as a secure hash.</div><p class="fine-print">Be kind. Never share passwords, financial details, or your home address with strangers.</p>
+        </div>
+      </section>
+      <section id="chatView" class="chat-layout hidden">
+        <aside class="sidebar"><div class="profile-row"><div class="avatar" id="myAvatar">U</div><div class="profile-copy"><strong id="myUsername">Username</strong><span>Ready to meet people</span></div><button id="logoutBtn" class="icon-btn" title="Sign out" aria-label="Sign out">↪</button></div><div class="sidebar-rule"></div><div class="sidebar-label">YOUR SPACE</div><div class="side-item selected"><span>✦</span> Random chat <span class="side-pill">LIVE</span></div><div class="side-info"><div class="mini-icon">◎</div><strong>Every chat is a fresh start</strong><p>Messages are relayed live and aren't saved as chat history by this app.</p></div><div class="sidebar-bottom"><span class="live-dot"></span> Global matching <span class="tiny-muted">• v1.0</span></div></aside>
+        <div class="chat-main"><div class="chat-header"><div><div class="chat-title" id="chatTitle">Random chat</div><div class="chat-subtitle" id="chatSubtitle">Find someone new to talk to</div></div><div class="chat-actions"><button id="reportBtn" class="outline-btn hidden">Report</button><button id="blockBtn" class="outline-btn hidden">Block</button><button id="nextBtn" class="primary-btn small">Find a chat <span>↗</span></button></div></div>
+          <div id="welcomePanel" class="welcome-panel"><div class="welcome-art"><div class="art-ring ring-a"></div><div class="art-ring ring-b"></div><div class="art-center">✦</div><div class="art-bubble bubble-a">hey there 👋</div><div class="art-bubble bubble-b">hi! 🌎</div></div><h2>Somewhere, someone<br>is waiting to say hello.</h2><p>Tap below to get matched with a random person around the world.</p><button id="startBtn" class="primary-btn start-btn">Find someone <span>→</span></button><div class="online-note"><span class="live-dot"></span> Real people · Live conversations</div></div>
+          <div id="messages" class="messages hidden" aria-live="polite"></div><div id="typingLine" class="typing-line hidden">Your partner is typing…</div><form id="messageForm" class="composer hidden"><input id="messageInput" maxlength="1000" autocomplete="off" placeholder="Write a message…" aria-label="Message"><button type="submit" class="send-btn" aria-label="Send message">↑</button></form>
+          <div id="statusPanel" class="status-panel hidden"><div class="loader"></div><strong id="statusTitle">Finding your next chat…</strong><p id="statusText">Hang tight while we find someone available.</p><button id="cancelBtn" class="outline-btn">Cancel</button></div>
+        </div>
+      </section>
+    </main><footer class="footer"><span>© 2026 StrangerWave</span><span>Made for good conversations <span class="heart">♥</span></span></footer>
+  </div><div id="toast" class="toast" role="status"></div>
+  <script src="/socket.io/socket.io.js"></script><script src="/app.js"></script>
+</body></html>
