@@ -1,43 +1,102 @@
+
 const express = require('express');
 const http = require('http');
 const path = require('path');
-const fs = require('fs');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const { Pool } = require('pg');
 const { Server } = require('socket.io');
 
 const PORT = Number(process.env.PORT || 3000);
 const JWT_SECRET = process.env.JWT_SECRET;
+const DATABASE_URL = process.env.DATABASE_URL;
 
 if (!JWT_SECRET || JWT_SECRET.length < 32) {
   console.error('Set JWT_SECRET to a random secret at least 32 characters long.');
   process.exit(1);
 }
 
-const DATA_FILE = path.join(__dirname, 'data.json');
-
-function loadData() {
-  try {
-    return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-  } catch {
-    return {};
-  }
+if (!DATABASE_URL) {
+  console.error('Set DATABASE_URL to your Neon PostgreSQL connection string.');
+  process.exit(1);
 }
 
-const db = loadData();
+const pool = new Pool({
+  connectionString: DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+  max: 5,
+  connectionTimeoutMillis: 10000,
+  idleTimeoutMillis: 30000
+});
 
-db.users ||= [];
-db.blocks ||= [];
-db.reports ||= [];
-db.friendRequests ||= [];
-db.friendships ||= [];
-db.privateMessages ||= [];
+const db = {
+  users: [],
+  blocks: [],
+  reports: [],
+  friendRequests: [],
+  friendships: [],
+  privateMessages: []
+};
+
+let saveQueue = Promise.resolve();
+
+function ensureArrays(data) {
+  data.users ||= [];
+  data.blocks ||= [];
+  data.reports ||= [];
+  data.friendRequests ||= [];
+  data.friendships ||= [];
+  data.privateMessages ||= [];
+  return data;
+}
+
+async function initializeDatabase() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS strangerwave_state (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      data JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    INSERT INTO strangerwave_state (id, data)
+    VALUES (1, $1::jsonb)
+    ON CONFLICT (id) DO NOTHING
+  `, [JSON.stringify(db)]);
+
+  const result = await pool.query(
+    'SELECT data FROM strangerwave_state WHERE id = 1'
+  );
+
+  if (result.rows.length) {
+    Object.assign(db, ensureArrays(result.rows[0].data));
+  }
+
+  console.log(
+    `Database ready. Loaded ${db.users.length} user account(s).`
+  );
+}
 
 function saveData() {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2));
+  // Take a snapshot now so later changes don't alter this queued save.
+  const snapshot = JSON.stringify(db);
+
+  saveQueue = saveQueue
+    .then(() => pool.query(`
+      INSERT INTO strangerwave_state (id, data, updated_at)
+      VALUES (1, $1::jsonb, NOW())
+      ON CONFLICT (id)
+      DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
+    `, [snapshot]))
+    .catch(error => {
+      console.error('Could not save StrangerWave data to PostgreSQL:', error);
+    });
+
+  return saveQueue;
 }
 
 function publicUser(user) {
@@ -88,7 +147,6 @@ function isBlocked(a, b) {
 }
 
 const onlineSockets = new Map();
-
 const app = express();
 const server = http.createServer(app);
 
@@ -109,63 +167,80 @@ app.use('/api', rateLimit({
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/api/health', (_req, res) => {
-  res.json({ ok: true });
+app.get('/api/health', async (_req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({ ok: true, database: 'connected' });
+  } catch (error) {
+    console.error('Database health check failed:', error.message);
+    res.status(503).json({ ok: false, database: 'disconnected' });
+  }
 });
 
 // REGISTER
 app.post('/api/register', async (req, res) => {
-  const username = String(req.body.username || '').trim();
-  const password = String(req.body.password || '');
+  try {
+    const username = String(req.body.username || '').trim();
+    const password = String(req.body.password || '');
 
-  if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
-    return res.status(400).json({
-      error: 'Username must be 3–20 characters: letters, numbers or underscores.'
-    });
+    if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
+      return res.status(400).json({
+        error: 'Username must be 3–20 characters: letters, numbers or underscores.'
+      });
+    }
+
+    if (password.length < 8 || password.length > 128) {
+      return res.status(400).json({
+        error: 'Password must be 8–128 characters.'
+      });
+    }
+
+    if (db.users.some(u =>
+      u.username.toLowerCase() === username.toLowerCase()
+    )) {
+      return res.status(409).json({ error: 'That username is already taken.' });
+    }
+
+    const user = {
+      id: crypto.randomUUID(),
+      username,
+      displayName: username,
+      bio: '',
+      avatar: '🟣',
+      passwordHash: await bcrypt.hash(password, 12),
+      createdAt: new Date().toISOString()
+    };
+
+    db.users.push(user);
+    await saveData();
+
+    res.json({ token: tokenFor(user), user: publicUser(user) });
+  } catch (error) {
+    console.error('Registration failed:', error);
+    res.status(500).json({ error: 'Could not create your account. Please try again.' });
   }
-
-  if (password.length < 8 || password.length > 128) {
-    return res.status(400).json({
-      error: 'Password must be 8–128 characters.'
-    });
-  }
-
-  if (db.users.some(u =>
-    u.username.toLowerCase() === username.toLowerCase()
-  )) {
-    return res.status(409).json({ error: 'That username is already taken.' });
-  }
-
-  const user = {
-    id: crypto.randomUUID(),
-    username,
-    displayName: username,
-    bio: '',
-    avatar: '🟣',
-    passwordHash: await bcrypt.hash(password, 12),
-    createdAt: new Date().toISOString()
-  };
-
-  db.users.push(user);
-  saveData();
-
-  res.json({ token: tokenFor(user), user: publicUser(user) });
 });
 
 // LOGIN
 app.post('/api/login', async (req, res) => {
-  const username = String(req.body.username || '').trim();
-  const password = String(req.body.password || '');
+  try {
+    const username = String(req.body.username || '').trim();
+    const password = String(req.body.password || '');
 
-  const user = db.users.find(u =>
-    u.username.toLowerCase() === username.toLowerCase()
-  );
+    const user = db.users.find(u =>
+      u.username.toLowerCase() === username.toLowerCase()
+    );
 
-  if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
-    return res.status(401).json({ error: 'Incorrect username or password.' });
+    if (!user || !user.passwordHash ||
+        !(await bcrypt.compare(password, user.passwordHash))) {
+      return res.status(401).json({ error: 'Incorrect username or password.' });
+    }
+
+    res.json({ token: tokenFor(user), user: publicUser(user) });
+  } catch (error) {
+    console.error('Login failed:', error);
+    res.status(500).json({ error: 'Could not sign in. Please try again.' });
   }
-
-  res.json({ token: tokenFor(user), user: publicUser(user) });
 });
 
 // CURRENT USER
@@ -175,7 +250,7 @@ app.get('/api/me', (req, res) => {
   res.json({ user: publicUser(user) });
 });
 
-// PROFILE: GET A USER'S PUBLIC PROFILE
+// PUBLIC PROFILE
 app.get('/api/profile/:username', (req, res) => {
   const viewer = getAuthenticatedUser(req);
   if (!viewer) return res.status(401).json({ error: 'Sign in first.' });
@@ -196,14 +271,17 @@ app.get('/api/profile/:username', (req, res) => {
   });
 });
 
-// PROFILE: UPDATE YOUR OWN PROFILE
-app.post('/api/profile', (req, res) => {
+// UPDATE PROFILE
+app.post('/api/profile', async (req, res) => {
   const user = getAuthenticatedUser(req);
   if (!user) return res.status(401).json({ error: 'Sign in first.' });
 
   const displayName = String(req.body.displayName || '').trim();
   const bio = String(req.body.bio || '').trim();
-  const allowedAvatars = ['🟣', '🦊', '🐸', '🐼', '🐱', '🐸', '👾', '👻', '🐺', '🌙', '⭐', '🔥', '💜', '🎧'];
+  const allowedAvatars = [
+    '🟣', '🦊', '🐸', '🐼', '🐱', '👾', '👻', '🐺',
+    '🌙', '⭐', '🔥', '💜', '🎧'
+  ];
 
   if (displayName.length < 1 || displayName.length > 24) {
     return res.status(400).json({
@@ -227,7 +305,7 @@ app.post('/api/profile', (req, res) => {
   user.avatar = avatar;
   user.profileUpdatedAt = new Date().toISOString();
 
-  saveData();
+  await saveData();
   res.json({ user: publicUser(user), message: 'Profile updated.' });
 });
 
@@ -245,38 +323,31 @@ app.get('/api/friends', (req, res) => {
         ...publicUser(other),
         online: onlineSockets.has(other.id)
       } : null;
-    })
-    .filter(Boolean);
+    }).filter(Boolean);
 
   const incoming = db.friendRequests
     .filter(r => r.toId === user.id)
     .map(r => {
       const sender = db.users.find(u => u.id === r.fromId);
       return sender ? {
-        id: r.id,
-        user: publicUser(sender),
-        createdAt: r.createdAt
+        id: r.id, user: publicUser(sender), createdAt: r.createdAt
       } : null;
-    })
-    .filter(Boolean);
+    }).filter(Boolean);
 
   const outgoing = db.friendRequests
     .filter(r => r.fromId === user.id)
     .map(r => {
       const receiver = db.users.find(u => u.id === r.toId);
       return receiver ? {
-        id: r.id,
-        user: publicUser(receiver),
-        createdAt: r.createdAt
+        id: r.id, user: publicUser(receiver), createdAt: r.createdAt
       } : null;
-    })
-    .filter(Boolean);
+    }).filter(Boolean);
 
   res.json({ friends, incoming, outgoing });
 });
 
 // SEND FRIEND REQUEST
-app.post('/api/friends/request', (req, res) => {
+app.post('/api/friends/request', async (req, res) => {
   const user = getAuthenticatedUser(req);
   if (!user) return res.status(401).json({ error: 'Sign in first.' });
 
@@ -312,12 +383,12 @@ app.post('/api/friends/request', (req, res) => {
     createdAt: new Date().toISOString()
   });
 
-  saveData();
+  await saveData();
   res.json({ ok: true, message: 'Friend request sent.' });
 });
 
 // ACCEPT REQUEST
-app.post('/api/friends/accept', (req, res) => {
+app.post('/api/friends/accept', async (req, res) => {
   const user = getAuthenticatedUser(req);
   if (!user) return res.status(401).json({ error: 'Sign in first.' });
 
@@ -332,7 +403,7 @@ app.post('/api/friends/accept', (req, res) => {
 
   if (isBlocked(user.id, request.fromId)) {
     db.friendRequests = db.friendRequests.filter(r => r.id !== request.id);
-    saveData();
+    await saveData();
     return res.status(403).json({ error: 'This request cannot be accepted.' });
   }
 
@@ -351,12 +422,12 @@ app.post('/api/friends/accept', (req, res) => {
     )
   );
 
-  saveData();
+  await saveData();
   res.json({ ok: true, message: 'Friend request accepted.' });
 });
 
 // DECLINE REQUEST
-app.post('/api/friends/decline', (req, res) => {
+app.post('/api/friends/decline', async (req, res) => {
   const user = getAuthenticatedUser(req);
   if (!user) return res.status(401).json({ error: 'Sign in first.' });
 
@@ -370,12 +441,12 @@ app.post('/api/friends/decline', (req, res) => {
   }
 
   db.friendRequests.splice(index, 1);
-  saveData();
+  await saveData();
   res.json({ ok: true, message: 'Friend request declined.' });
 });
 
 // REMOVE FRIEND
-app.post('/api/friends/remove', (req, res) => {
+app.post('/api/friends/remove', async (req, res) => {
   const user = getAuthenticatedUser(req);
   if (!user) return res.status(401).json({ error: 'Sign in first.' });
 
@@ -393,11 +464,11 @@ app.post('/api/friends/remove', (req, res) => {
     return res.status(404).json({ error: 'Friendship not found.' });
   }
 
-  saveData();
+  await saveData();
   res.json({ ok: true, message: 'Friend removed.' });
 });
 
-// PRIVATE MESSAGE HISTORY — FRIENDS ONLY
+// PRIVATE MESSAGE HISTORY
 app.get('/api/private/:friendId', (req, res) => {
   const user = getAuthenticatedUser(req);
   if (!user) return res.status(401).json({ error: 'Sign in first.' });
@@ -421,7 +492,7 @@ app.get('/api/private/:friendId', (req, res) => {
 });
 
 // REPORT USER
-app.post('/api/report', (req, res) => {
+app.post('/api/report', async (req, res) => {
   const user = getAuthenticatedUser(req);
   if (!user) return res.status(401).json({ error: 'Sign in first.' });
 
@@ -440,7 +511,7 @@ app.post('/api/report', (req, res) => {
     createdAt: new Date().toISOString()
   });
 
-  saveData();
+  await saveData();
   res.json({ ok: true });
 });
 
@@ -460,7 +531,6 @@ function leaveChat(socket, tellPeer = true) {
   if (peer) {
     active.delete(peer.id);
     peer.leave(session.room);
-
     if (tellPeer) {
       peer.emit('chat:ended', { reason: 'Your partner left the chat.' });
     }
@@ -474,7 +544,6 @@ function removeFromQueue(socketId) {
 
 function findPartner(socket, user) {
   removeFromQueue(socket.id);
-
   if (active.has(socket.id)) leaveChat(socket, true);
 
   let candidateIndex = -1;
@@ -534,7 +603,6 @@ io.use((socket, next) => {
   const user = userFromToken(String(token || ''));
 
   if (!user) return next(new Error('Please sign in again.'));
-
   socket.user = publicUser(user);
   next();
 });
@@ -587,7 +655,7 @@ io.on('connection', socket => {
     socket.emit('chat:idle');
   });
 
-  socket.on('chat:block', targetUsername => {
+  socket.on('chat:block', async targetUsername => {
     const session = active.get(socket.id);
     if (!session) return;
 
@@ -595,7 +663,8 @@ io.on('connection', socket => {
       u.username.toLowerCase() === String(targetUsername).toLowerCase()
     );
 
-    if (target && target.id !== socket.user.id && !isBlocked(socket.user.id, target.id)) {
+    if (target && target.id !== socket.user.id &&
+        !isBlocked(socket.user.id, target.id)) {
       db.blocks.push({
         ownerId: socket.user.id,
         blockedId: target.id,
@@ -616,24 +685,25 @@ io.on('connection', socket => {
         )
       );
 
-      saveData();
+      await saveData();
     }
 
     leaveChat(socket, true);
     socket.emit('chat:idle');
   });
 
-  // PRIVATE MESSAGE: ONLY ACCEPTED, UNBLOCKED FRIENDS
-  socket.on('private:message', raw => {
+  // PRIVATE MESSAGE
+  socket.on('private:message', async raw => {
     if (!raw || typeof raw.toId !== 'string' || typeof raw.text !== 'string') return;
 
     const toId = raw.toId;
     const text = raw.text.trim().slice(0, 1000);
-
     if (!text || toId === socket.user.id) return;
 
     if (!areFriends(socket.user.id, toId) || isBlocked(socket.user.id, toId)) {
-      socket.emit('private:error', { error: 'You can only message an unblocked friend.' });
+      socket.emit('private:error', {
+        error: 'You can only message an unblocked friend.'
+      });
       return;
     }
 
@@ -655,12 +725,11 @@ io.on('connection', socket => {
       db.privateMessages.splice(0, db.privateMessages.length - 5000);
     }
 
-    saveData();
+    await saveData();
     socket.emit('private:message', message);
 
     const targetSocketId = onlineSockets.get(toId);
     const targetSocket = targetSocketId && io.sockets.sockets.get(targetSocketId);
-
     if (targetSocket) targetSocket.emit('private:message', message);
   });
 
@@ -696,6 +765,17 @@ io.on('connection', socket => {
   });
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`StrangerWave running on port ${PORT}`);
-});
+async function startServer() {
+  try {
+    await initializeDatabase();
+
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`StrangerWave running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error('Could not start StrangerWave or connect to PostgreSQL:', error);
+    process.exit(1);
+  }
+}
+
+startServer();
