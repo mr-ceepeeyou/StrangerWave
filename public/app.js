@@ -22,7 +22,8 @@
     socialModal: null,
     privateFriend: null,
     privateTypingTimer: null,
-    friendsContent: null
+    friendsContent: null,
+    addPartnerButton: null
   };
 
   const AVATARS = ['🟣', '🦊', '🐸', '🐼', '🐱', '👾', '👻', '🐺', '🌙', '⭐', '🔥', '💜', '🎧'];
@@ -836,12 +837,12 @@
     style(titleWrap, { minWidth: '0', flex: '1' });
 
     const title = document.createElement('div');
-    title.textContent = 'Your social space';
+    title.textContent = 'Chats';
 
     style(title, { fontSize: '19px', fontWeight: '800' });
 
     const subtitle = document.createElement('div');
-    subtitle.textContent = 'Friends, profiles and private chats';
+    subtitle.textContent = 'Your people, all in one place';
 
     style(subtitle, {
       fontSize: '11px',
@@ -854,7 +855,16 @@
     const headerButtons = document.createElement('div');
     style(headerButtons, { display: 'flex', gap: '6px', flexShrink: '0' });
 
+    const addPeopleButton = button('＋', () => {
+      const opening = addSection.style.display === 'none';
+      addSection.style.display = opening ? 'block' : 'none';
+      if (opening) usernameInput.focus();
+    });
+    addPeopleButton.title = 'Add people or view requests';
+    addPeopleButton.setAttribute('aria-label', 'Add people');
+    style(addPeopleButton, { width: '38px', height: '38px', minWidth: '38px', padding: '0', borderRadius: '13px', fontSize: '23px', fontWeight: '500' });
     headerButtons.append(
+      addPeopleButton,
       button('Profile', openMyProfile, true),
       button('✕', () => {
         panel.style.display = 'none';
@@ -864,7 +874,8 @@
 
     header.append(titleWrap, headerButtons);
 
-    const addSection = section('Add someone');
+    const addSection = section('Add people by username');
+    addSection.style.display = 'none';
     const addRow = document.createElement('div');
 
     style(addRow, {
@@ -935,6 +946,19 @@
     state.friendsButton = buttonEl;
     state.friendsPanel = panel;
     state.friendsContent = content;
+
+    const addPartnerButton = button('＋ Add person', async () => {
+      if (!state.partner || !state.matched) return toast('Find someone first.');
+      try {
+        const result = await api('/api/friends/request', { username: state.partner.username });
+        toast(result.message);
+        await refreshFriends();
+      } catch (err) { toast(err.message); }
+    }, true);
+    addPartnerButton.id = 'strangerwave-add-partner';
+    addPartnerButton.style.cssText += ';position:fixed;right:16px;bottom:calc(82px + env(safe-area-inset-bottom, 0px));z-index:1000;display:none;border-radius:14px;padding:10px 14px;box-shadow:0 8px 24px #0008;';
+    document.body.appendChild(addPartnerButton);
+    state.addPartnerButton = addPartnerButton;
 
     // Keep the floating button above normal page content.
     // Re-append it when the chat view is displayed.
@@ -1073,7 +1097,7 @@
       friends.appendChild(row);
     });
 
-    content.append(incoming, outgoing, friends);
+    content.append(friends, incoming, outgoing);
   }
 
   // ---------- MAIN CHAT ----------
@@ -1270,6 +1294,7 @@
       state.queued = false;
       state.matched = true;
       state.partner = data.partner;
+      if (state.addPartnerButton) { state.addPartnerButton.style.display = 'block'; state.addPartnerButton.textContent = '＋ Add @' + (data.partner.username || 'person'); }
       state.currentChatMode = data.videoMode ? 'video' : 'text';
       if (data.videoMode) {
         $('videoPanel').classList.remove('hidden');
@@ -1331,6 +1356,7 @@
       const wasMatched = state.matched;
       state.matched = false;
       state.partner = null;
+      if (state.addPartnerButton) state.addPartnerButton.style.display = 'none';
       stopVideo();
       state.currentChatMode = 'text';
 
@@ -1450,6 +1476,7 @@
     if (state.socket) state.socket.emit('chat:leave');
     state.matched = false;
     state.partner = null;
+    if (state.addPartnerButton) state.addPartnerButton.style.display = 'none';
     if (mode === 'video') {
       if (state.peerConnection) {
         state.peerConnection.onicecandidate = null;
@@ -1551,7 +1578,7 @@
         const destination = item.dataset.nav;
         bottomNav.querySelectorAll('[data-nav]').forEach(button => button.classList.toggle('active', button === item));
         if (destination === 'chats') {
-          if (state.friendsButton) state.friendsButton.click();
+          if (state.friendsPanel) { state.friendsPanel.style.display = 'flex'; if (state.friendsButton) state.friendsButton.setAttribute('aria-expanded', 'true'); refreshFriends(); }
           else toast('Your chats and friends are loading.');
         } else if (destination === 'video') {
           if (state.currentChatMode !== 'video' || !state.queued) startVideoChat();
@@ -1564,6 +1591,9 @@
       });
     });
   }
+
+  function hideAppLoading() { const loader = document.getElementById('appLoading'); if (loader) { loader.classList.add('is-done'); window.setTimeout(() => loader.remove(), 350); } }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', hideAppLoading, { once: true }); else hideAppLoading();
 
   async function boot() {
     if (!state.token) return;
