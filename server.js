@@ -38,7 +38,8 @@ const db = {
   reports: [],
   friendRequests: [],
   friendships: [],
-  privateMessages: []
+  privateMessages: [],
+  profileReveals: []
 };
 
 let saveQueue = Promise.resolve();
@@ -50,6 +51,7 @@ function ensureArrays(data) {
   data.friendRequests ||= [];
   data.friendships ||= [];
   data.privateMessages ||= [];
+  data.profileReveals ||= [];
   return data;
 }
 
@@ -105,7 +107,8 @@ function publicUser(user) {
     username: user.username,
     displayName: user.displayName || user.username,
     bio: user.bio || '',
-    avatar: user.avatar || '🟣'
+    avatar: user.avatar || '🟣',
+    publicPhotos: Array.isArray(user.publicPhotos) ? user.publicPhotos : []
   };
 }
 
@@ -156,7 +159,7 @@ const io = new Server(server, {
 });
 
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(express.json({ limit: '20kb' }));
+app.use(express.json({ limit: '1mb' }));
 
 app.use('/api', rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -271,6 +274,33 @@ app.get('/api/profile/:username', (req, res) => {
   });
 });
 
+// MUTUAL PROFILE REVEAL: both people must request before the full profile is revealed.
+app.get('/api/reveal/:username', (req, res) => {
+  const viewer = getAuthenticatedUser(req);
+  if (!viewer) return res.status(401).json({ error: 'Sign in first.' });
+  const target = db.users.find(u => u.username.toLowerCase() === String(req.params.username || '').toLowerCase());
+  if (!target) return res.status(404).json({ error: 'User not found.' });
+  const pair = [viewer.id, target.id].sort().join(':');
+  const entry = db.profileReveals.find(r => r.pair === pair);
+  res.json({ requested: !!entry && entry.requestedBy.includes(viewer.id), mutual: !!entry && entry.requestedBy.includes(viewer.id) && entry.requestedBy.includes(target.id) });
+});
+
+app.post('/api/reveal/request', async (req, res) => {
+  const viewer = getAuthenticatedUser(req);
+  if (!viewer) return res.status(401).json({ error: 'Sign in first.' });
+  const target = db.users.find(u => u.username.toLowerCase() === String(req.body.username || '').toLowerCase());
+  if (!target) return res.status(404).json({ error: 'User not found.' });
+  if (target.id === viewer.id) return res.status(400).json({ error: 'You cannot reveal your profile to yourself.' });
+  if (isBlocked(viewer.id, target.id)) return res.status(403).json({ error: 'You cannot request a reveal with this user.' });
+  const pair = [viewer.id, target.id].sort().join(':');
+  let entry = db.profileReveals.find(r => r.pair === pair);
+  if (!entry) { entry = { pair, userA: [viewer.id, target.id].sort()[0], userB: [viewer.id, target.id].sort()[1], requestedBy: [], createdAt: new Date().toISOString() }; db.profileReveals.push(entry); }
+  if (!entry.requestedBy.includes(viewer.id)) entry.requestedBy.push(viewer.id);
+  await saveData();
+  const mutual = entry.requestedBy.includes(target.id);
+  res.json({ ok: true, mutual, message: mutual ? 'You both agreed. Profile reveal unlocked!' : 'Reveal request sent. It unlocks when they agree too.' });
+});
+
 // UPDATE PROFILE
 app.post('/api/profile', async (req, res) => {
   const user = getAuthenticatedUser(req);
@@ -300,9 +330,17 @@ app.post('/api/profile', async (req, res) => {
     return res.status(400).json({ error: 'Choose an available avatar.' });
   }
 
+  const publicPhotos = Array.isArray(req.body.publicPhotos) ? req.body.publicPhotos : (user.publicPhotos || []);
+  if (publicPhotos.length > 3 || publicPhotos.some(photo =>
+    typeof photo !== 'string' || !/^data:image\/(png|jpeg|webp|gif);base64,/.test(photo) || photo.length > 280000
+  )) {
+    return res.status(400).json({ error: 'Add up to 3 photos, each under about 200 KB, in PNG, JPG, WEBP or GIF format.' });
+  }
+
   user.displayName = displayName;
   user.bio = bio;
   user.avatar = avatar;
+  user.publicPhotos = publicPhotos;
   user.profileUpdatedAt = new Date().toISOString();
 
   await saveData();

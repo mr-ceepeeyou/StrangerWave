@@ -23,3 +23,51 @@
 .video-label{position:absolute;bottom:10px;left:10px;padding:6px 10px;border:1px solid rgba(255,255,255,.12);border-radius:9px;background:rgba(12,10,20,.8);color:#fff;font-size:12px}
 .video-status{grid-column:1/-1;margin:0;color:#b9a4e8;font-size:13px;text-align:center}
 @media(max-width:600px){.video-panel{grid-template-columns:1fr}}
+
+
+/* Video chat: keep the conversation readable over the camera feed. */
+.chat-main{position:relative;isolation:isolate}
+.video-panel{position:absolute;z-index:0;inset:77px 0 0;margin:0;width:100%;height:auto;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:minmax(0,1fr) auto;gap:10px;padding:12px;background:#090811;overflow:hidden}
+.video-panel.hidden{display:none!important}
+.video-card{min-height:0;height:100%;aspect-ratio:auto;border-radius:14px;border-color:#514078;background:#100d19}
+.video-card video{object-fit:cover}
+.video-status{grid-column:1/-1;padding:8px 10px;border-radius:10px;background:rgba(12,10,22,.86);font-size:12px;z-index:2}
+.messages{position:relative;z-index:2;background:linear-gradient(180deg,rgba(10,9,17,.14),rgba(10,9,17,.4));}
+.typing-line,.composer{position:relative;z-index:3}
+.composer{background:rgba(12,11,20,.96);backdrop-filter:blur(12px)}
+#startVideoBtn{margin-top:10px;position:relative;isolation:isolate;gap:12px;border:1px solid rgba(178,145,255,.55);border-radius:14px;background:linear-gradient(125deg,rgba(155,123,255,.18),rgba(103,76,206,.12));color:#e8deff;font-weight:700;box-shadow:0 0 0 1px rgba(155,123,255,.08),0 10px 28px rgba(107,77,222,.18);transition:transform .18s,border-color .18s,background .18s,box-shadow .18s}
+#startVideoBtn:hover{transform:translateY(-2px);border-color:#b9a2ff;background:linear-gradient(125deg,rgba(155,123,255,.32),rgba(103,76,206,.2));box-shadow:0 8px 30px rgba(107,77,222,.28)}
+#startVideoBtn span{display:inline-grid;place-items:center;width:25px;height:25px;border-radius:8px;background:linear-gradient(135deg,#c4b1ff,#8b6cff);color:#171027;font-size:12px}
+/* Prevent iOS Safari from zooming the page when message inputs receive focus. */
+input,textarea,select{font-size:16px;}
+@media(max-width:680px){
+  .chat-header{position:relative;z-index:5;flex:0 0 70px;min-width:0}
+  .chat-actions{flex-shrink:0;gap:5px}
+  #nextBtn{min-width:88px;min-height:40px;padding:10px 11px;font-size:11px;white-space:nowrap;touch-action:manipulation}
+  .chat-header>div:first-child{min-width:0;flex:1}
+  .chat-title,.chat-subtitle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .video-panel{inset:70px 0 0;grid-template-columns:1fr;grid-template-rows:minmax(0,1fr);padding:8px;gap:8px}
+  .video-card{position:absolute;inset:8px;height:auto;width:auto;aspect-ratio:auto}
+  .video-card:first-child{inset:8px}
+  .video-card.local-video-card{inset:16px 16px auto auto;width:31%;height:auto;aspect-ratio:3/4;z-index:2;border:2px solid #b7a0ff;box-shadow:0 8px 25px #0008}
+  .video-status{position:absolute;left:10px;right:10px;bottom:10px;z-index:3;width:auto;grid-column:auto}
+  .messages{padding:14px 10px 18px;min-height:0}
+  .message{max-width:90%}
+  .composer{padding:8px;gap:7px}
+  .composer input{font-size:16px!important;min-width:0;padding:12px}
+  .send-btn{flex:0 0 44px;min-width:44px;min-height:44px;touch-action:manipulation}
+  .outline-btn,.primary-btn,.icon-btn{touch-action:manipulation}
+}
+
+/* Bottom navigation for quick switching between the four main areas. */
+.bottom-nav{display:flex;align-items:stretch;justify-content:space-around;gap:6px;padding:9px 10px calc(9px + env(safe-area-inset-bottom));margin:0 0 14px;border:1px solid #302b47;border-radius:17px;background:rgba(19,17,31,.96);box-shadow:0 12px 36px #0004;backdrop-filter:blur(18px)}
+.bottom-nav-item{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:9px 5px;border:1px solid transparent;border-radius:12px;background:transparent;color:#9692ad;font:600 10px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap;touch-action:manipulation}
+.bottom-nav-item .nav-icon{font-size:19px;line-height:1;color:#aaa1cb}
+.bottom-nav-item.active{color:#eee8ff;background:linear-gradient(135deg,#31264f,#211b35);border-color:#514071;box-shadow:inset 0 0 18px #9b7bff0c}
+.bottom-nav-item.active .nav-icon{color:#bca8ff}
+@media(max-width:680px){.bottom-nav{position:fixed;z-index:20;left:10px;right:10px;bottom:calc(8px + env(safe-area-inset-bottom));margin:0;padding:6px 5px calc(6px + env(safe-area-inset-bottom));border-radius:16px;box-shadow:0 8px 35px #0009}.bottom-nav-item{font-size:9px;padding:8px 2px;gap:4px}.bottom-nav-item .nav-icon{font-size:18px}.chat-layout{margin-bottom:84px}.footer{padding-bottom:0}}
+
+/* Notification badge for pending friend requests */
+.bottom-nav-item { position: relative; }
+.nav-notification-badge { position: absolute; top: 3px; right: calc(50% - 25px); min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: #a78bfa; color: #100b20; font-size: 10px; font-weight: 900; line-height: 17px; text-align: center; box-shadow: 0 0 0 2px #100d18; }
+.nav-notification-badge[hidden] { display: none; }

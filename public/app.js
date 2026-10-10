@@ -438,12 +438,60 @@
     const bioInput = textArea('Tell people a little about yourself…', current.bio || '', 160);
     panel.appendChild(bioInput);
 
+    const photoHeading = document.createElement('div');
+    photoHeading.textContent = '✨ Public profile photos';
+    style(photoHeading, { color: '#eee8ff', fontWeight: '800', marginTop: '18px', marginBottom: '5px' });
+    panel.appendChild(photoHeading);
+    const photoHelp = document.createElement('div');
+    photoHelp.textContent = 'Add up to 3 photos everyone can see, even before a mutual profile reveal. Only upload photos you are comfortable sharing publicly.';
+    style(photoHelp, { color: '#aaa5c5', fontSize: '12px', lineHeight: '1.5', marginBottom: '10px' });
+    panel.appendChild(photoHelp);
+    let publicPhotos = Array.isArray(current.publicPhotos) ? [...current.publicPhotos] : [];
+    const photoPreview = document.createElement('div');
+    style(photoPreview, { display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' });
+    const renderPhotoPreview = () => {
+      photoPreview.replaceChildren();
+      publicPhotos.forEach((src, index) => {
+        const wrap = document.createElement('div');
+        style(wrap, { position: 'relative', width: '76px', height: '76px' });
+        const img = document.createElement('img'); img.src = src; img.alt = `Public profile photo ${index + 1}`;
+        style(img, { width: '76px', height: '76px', objectFit: 'cover', borderRadius: '12px', border: '1px solid #6e49b8' });
+        const remove = button('×', () => { publicPhotos.splice(index, 1); renderPhotoPreview(); }, true);
+        style(remove, { position: 'absolute', top: '-5px', right: '-5px', padding: '2px 7px', borderRadius: '50%' });
+        wrap.append(img, remove); photoPreview.appendChild(wrap);
+      });
+    };
+    renderPhotoPreview(); panel.appendChild(photoPreview);
+    const photoInput = document.createElement('input');
+    photoInput.type = 'file'; photoInput.accept = 'image/png,image/jpeg,image/webp,image/gif'; photoInput.multiple = true;
+    photoInput.setAttribute('aria-label', 'Choose public profile photos');
+    style(photoInput, { width: '100%', color: '#c9c1e8', fontSize: '12px', marginBottom: '6px' });
+    photoInput.addEventListener('change', async () => {
+      for (const file of Array.from(photoInput.files || [])) {
+        if (publicPhotos.length >= 3) { toast('You can add up to 3 public photos.'); break; }
+        if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type) || file.size > 200 * 1024) { toast('Each photo must be PNG, JPG, WEBP or GIF and under 200 KB.'); continue; }
+        const data = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); });
+        publicPhotos.push(data);
+      }
+      photoInput.value = ''; renderPhotoPreview();
+    });
+    panel.appendChild(photoInput);
+    const comingSoon = document.createElement('div');
+    style(comingSoon, { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '14px' });
+    ['🖼️ Avatar frames & badges', '🌌 Animated backgrounds'].forEach(labelText => {
+      const item = document.createElement('div'); item.textContent = `${labelText} · COMING SOON`;
+      style(item, { padding: '11px', border: '1px solid #4d337f', borderRadius: '12px', color: '#b7a1ee', background: 'rgba(125,70,220,.09)', fontSize: '11px', fontWeight: '700', textAlign: 'center' });
+      comingSoon.appendChild(item);
+    });
+    panel.appendChild(comingSoon);
+
     const save = button('Save profile', async () => {
       try {
         const result = await api('/api/profile', {
           displayName: displayInput.value,
           bio: bioInput.value,
-          avatar: selectedAvatar
+          avatar: selectedAvatar,
+          publicPhotos
         });
 
         state.user = result.user;
@@ -521,10 +569,49 @@
 
       panel.append(avatar, name, handle, status, bio);
 
+      if (Array.isArray(profile.publicPhotos) && profile.publicPhotos.length) {
+        const photosTitle = document.createElement('div');
+        photosTitle.textContent = 'Public photos';
+        style(photosTitle, { color: '#eee8ff', fontWeight: '800', marginTop: '16px', marginBottom: '8px' });
+        panel.appendChild(photosTitle);
+        const photosGrid = document.createElement('div');
+        style(photosGrid, { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '7px', marginBottom: '12px' });
+        profile.publicPhotos.slice(0, 3).forEach((src, index) => {
+          const img = document.createElement('img'); img.src = src; img.alt = `Public photo ${index + 1}`;
+          style(img, { width: '100%', aspectRatio: '1 / 1', objectFit: 'cover', borderRadius: '10px', border: '1px solid #4d337f' });
+          photosGrid.appendChild(img);
+        });
+        panel.appendChild(photosGrid);
+      }
+
       if (profile.id !== state.user.id) {
         const actions = document.createElement('div');
         style(actions, { display: 'flex', gap: '8px' });
 
+        const reveal = button('✨ Request mutual reveal', async () => {
+          try {
+            const result = await api('/api/reveal/request', { username: profile.username });
+            toast(result.message);
+            if (result.mutual) openProfile(profile.username);
+          } catch (err) { toast(err.message); }
+        });
+        style(reveal, { flex: '1 1 100%', marginBottom: '8px' });
+        actions.style.flexWrap = 'wrap';
+        actions.appendChild(reveal);
+        try {
+          const revealState = await api(`/api/reveal/${encodeURIComponent(profile.username)}`);
+          if (revealState.mutual) {
+            const unlocked = document.createElement('div');
+            unlocked.textContent = '💜 You both agreed to reveal your profiles.';
+            style(unlocked, { width: '100%', color: '#c4b5fd', fontSize: '12px', textAlign: 'center', marginBottom: '8px' });
+            actions.appendChild(unlocked);
+          } else if (revealState.requested) {
+            const pending = document.createElement('div');
+            pending.textContent = 'Waiting for them to agree to the reveal…';
+            style(pending, { width: '100%', color: '#a49bbf', fontSize: '12px', textAlign: 'center', marginBottom: '8px' });
+            actions.appendChild(pending);
+          }
+        } catch {}
         if (profile.isFriend) {
           const message = button('Message', () => openPrivateChat(profile));
           style(message, { flex: '1' });
@@ -946,6 +1033,14 @@
 
     try {
       state.friends = await api('/api/friends');
+      const chatsNav = document.querySelector('[data-nav="chats"]');
+      if (chatsNav) {
+        let badge = chatsNav.querySelector('.nav-notification-badge');
+        const count = (state.friends.incoming || []).length;
+        if (count && !badge) { badge = document.createElement('span'); badge.className = 'nav-notification-badge'; chatsNav.appendChild(badge); }
+        if (badge) { badge.textContent = count > 9 ? '9+' : String(count); badge.hidden = !count; }
+        chatsNav.setAttribute('aria-label', count ? `Chats, ${count} pending friend request${count === 1 ? '' : 's'}` : 'Chats');
+      }
       renderFriends();
     } catch (err) {
       if (/sign in/i.test(err.message)) toast('Please sign in again.');
@@ -1377,10 +1472,35 @@
 
   $('startBtn').addEventListener('click', () => findChat('text'));
   $('startVideoBtn').addEventListener('click', startVideoChat);
-  $('nextBtn').addEventListener('click', () => {
-    if (state.currentChatMode === 'video') {
-      stopVideo();
-      startVideoChat();
+  $('nextBtn').addEventListener('click', async () => {
+    // Mobile-safe skip: leave the current match first, then restart the selected mode.
+    const mode = state.currentChatMode === 'video' ? 'video' : 'text';
+    const hadCamera = mode === 'video' && Boolean(state.localStream);
+    if (state.socket) state.socket.emit('chat:leave');
+    state.matched = false;
+    state.partner = null;
+    if (mode === 'video') {
+      if (state.peerConnection) {
+        state.peerConnection.onicecandidate = null;
+        state.peerConnection.ontrack = null;
+        state.peerConnection.close();
+        state.peerConnection = null;
+      }
+      state.videoCallActive = false;
+      if (!hadCamera) {
+        stopVideo();
+        startVideoChat();
+        return;
+      }
+      $('videoPanel').classList.remove('hidden');
+      $('remoteVideo').srcObject = null;
+      $('videoStatus').textContent = 'Finding your next video match…';
+      $('messages').innerHTML = '';
+      $('statusPanel').classList.remove('hidden');
+      $('statusTitle').textContent = 'Finding your next video chat…';
+      $('statusText').textContent = 'Looking for someone new.';
+      state.queued = true;
+      state.socket.emit('match:find', { mode: 'video' });
     } else {
       findChat('text');
     }
@@ -1451,6 +1571,28 @@
   }
 
   $('logoutBtn').addEventListener('click', logout);
+
+  // Bottom navigation: reuse the existing chat, video, friends and profile features.
+  const bottomNav = $('bottomNav');
+  if (bottomNav) {
+    bottomNav.querySelectorAll('[data-nav]').forEach(item => {
+      item.addEventListener('click', () => {
+        const destination = item.dataset.nav;
+        bottomNav.querySelectorAll('[data-nav]').forEach(button => button.classList.toggle('active', button === item));
+        if (destination === 'chats') {
+          if (state.friendsButton) state.friendsButton.click();
+          else toast('Your chats and friends are loading.');
+        } else if (destination === 'video') {
+          if (state.currentChatMode !== 'video' || !state.queued) startVideoChat();
+        } else if (destination === 'random') {
+          if (state.matched && state.currentChatMode === 'text') return;
+          findChat('text');
+        } else if (destination === 'profile') {
+          openMyProfile();
+        }
+      });
+    });
+  }
 
   async function boot() {
     if (!state.token) return;
