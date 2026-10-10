@@ -556,6 +556,7 @@ function findPartner(socket, user) {
       !candidateSocket ||
       !candidateSocket.connected ||
       candidate.userId === user.id ||
+      candidate.mode !== (socket.data.chatMode || 'text') ||
       isBlocked(candidate.userId, user.id)
     ) continue;
 
@@ -564,7 +565,7 @@ function findPartner(socket, user) {
   }
 
   if (candidateIndex < 0) {
-    waiting.push({ socketId: socket.id, userId: user.id, since: Date.now() });
+    waiting.push({ socketId: socket.id, userId: user.id, mode: socket.data.chatMode || 'text', since: Date.now() });
     socket.emit('match:waiting');
     return;
   }
@@ -573,7 +574,7 @@ function findPartner(socket, user) {
   const peer = io.sockets.sockets.get(candidate.socketId);
 
   if (!peer) {
-    waiting.push({ socketId: socket.id, userId: user.id, since: Date.now() });
+    waiting.push({ socketId: socket.id, userId: user.id, mode: socket.data.chatMode || 'text', since: Date.now() });
     socket.emit('match:waiting');
     return;
   }
@@ -582,18 +583,22 @@ function findPartner(socket, user) {
   socket.join(room);
   peer.join(room);
 
-  active.set(socket.id, { peerId: peer.id, room, userId: user.id });
-  active.set(peer.id, { peerId: socket.id, room, userId: candidate.userId });
+  active.set(socket.id, { peerId: peer.id, room, userId: user.id, mode: socket.data.chatMode || 'text' });
+  active.set(peer.id, { peerId: socket.id, room, userId: candidate.userId, mode: candidate.mode || 'text' });
 
   const otherUser = db.users.find(u => u.id === candidate.userId);
   const currentUser = db.users.find(u => u.id === user.id);
 
   socket.emit('match:found', {
-    partner: otherUser ? publicUser(otherUser) : { id: '', username: 'Stranger' }
+    partner: otherUser ? publicUser(otherUser) : { id: '', username: 'Stranger' },
+    videoMode: (socket.data.chatMode || 'text') === 'video',
+    isInitiator: socket.id.localeCompare(peer.id) < 0
   });
 
   peer.emit('match:found', {
-    partner: currentUser ? publicUser(currentUser) : { id: '', username: 'Stranger' }
+    partner: currentUser ? publicUser(currentUser) : { id: '', username: 'Stranger' },
+    videoMode: (peer.data.chatMode || 'text') === 'video',
+    isInitiator: peer.id.localeCompare(socket.id) < 0
   });
 }
 
@@ -613,9 +618,32 @@ io.on('connection', socket => {
   io.emit('presence:update', { userId: socket.user.id, online: true });
   socket.emit('server:ready');
 
-  socket.on('match:find', () => {
+  socket.on('match:find', options => {
     if (active.has(socket.id)) leaveChat(socket, true);
+    socket.data.chatMode = options && options.mode === 'video' ? 'video' : 'text';
     findPartner(socket, socket.user);
+  });
+
+  // WebRTC signaling is relayed only to the currently matched video-chat partner.
+  socket.on('video:offer', data => {
+    const session = active.get(socket.id);
+    if (!session || session.mode !== 'video' || !data || typeof data.sdp !== 'object') return;
+    const peer = io.sockets.sockets.get(session.peerId);
+    if (peer) peer.emit('video:offer', { sdp: data.sdp });
+  });
+
+  socket.on('video:answer', data => {
+    const session = active.get(socket.id);
+    if (!session || session.mode !== 'video' || !data || typeof data.sdp !== 'object') return;
+    const peer = io.sockets.sockets.get(session.peerId);
+    if (peer) peer.emit('video:answer', { sdp: data.sdp });
+  });
+
+  socket.on('video:ice-candidate', data => {
+    const session = active.get(socket.id);
+    if (!session || session.mode !== 'video' || !data || typeof data.candidate !== 'object') return;
+    const peer = io.sockets.sockets.get(session.peerId);
+    if (peer) peer.emit('video:ice-candidate', { candidate: data.candidate });
   });
 
   socket.on('chat:message', raw => {

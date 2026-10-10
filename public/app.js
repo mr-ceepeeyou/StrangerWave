@@ -7,6 +7,10 @@
     token: localStorage.getItem('sw_token'),
     user: null,
     socket: null,
+    videoCallActive: false,
+    localStream: null,
+    peerConnection: null,
+    currentChatMode: 'text',
     partner: null,
     matched: false,
     queued: false,
@@ -1088,6 +1092,79 @@
     $('blockBtn').classList.add('hidden');
   }
 
+  function stopVideo() {
+    state.videoCallActive = false;
+    if (state.peerConnection) {
+      state.peerConnection.onicecandidate = null;
+      state.peerConnection.ontrack = null;
+      state.peerConnection.close();
+      state.peerConnection = null;
+    }
+    if (state.localStream) {
+      state.localStream.getTracks().forEach(track => track.stop());
+      state.localStream = null;
+    }
+    if ($('localVideo')) $('localVideo').srcObject = null;
+    if ($('remoteVideo')) $('remoteVideo').srcObject = null;
+    if ($('videoPanel')) $('videoPanel').classList.add('hidden');
+    if ($('videoStatus')) $('videoStatus').textContent = 'Your video will start when you choose video chat.';
+  }
+
+  async function startVideoChat() {
+    if (!state.socket || !state.socket.connected) {
+      toast('Connecting… please try again in a moment.');
+      return;
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast('Video requires HTTPS and a browser that supports camera access.');
+      return;
+    }
+    try {
+      stopVideo();
+      state.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      $('localVideo').srcObject = state.localStream;
+      $('videoPanel').classList.remove('hidden');
+      $('videoStatus').textContent = 'Camera ready. Finding someone for video chat…';
+      state.currentChatMode = 'video';
+      findChat('video');
+    } catch (error) {
+      stopVideo();
+      toast(error && error.name === 'NotAllowedError'
+        ? 'Camera/microphone permission was denied.'
+        : 'Could not start camera. Check your camera and microphone, then try again.');
+    }
+  }
+
+  async function createVideoPeer(isInitiator) {
+    if (!state.localStream || !state.socket) return;
+    if (state.peerConnection) state.peerConnection.close();
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    });
+    state.peerConnection = pc;
+    state.videoCallActive = true;
+    state.localStream.getTracks().forEach(track => pc.addTrack(track, state.localStream));
+    pc.ontrack = event => {
+      if ($('remoteVideo')) $('remoteVideo').srcObject = event.streams[0];
+      if ($('videoStatus')) $('videoStatus').textContent = 'You are connected by video.';
+    };
+    pc.onicecandidate = event => {
+      if (event.candidate && state.socket) {
+        state.socket.emit('video:ice-candidate', { candidate: event.candidate });
+      }
+    };
+    pc.onconnectionstatechange = () => {
+      if (['failed', 'disconnected'].includes(pc.connectionState) && $('videoStatus')) {
+        $('videoStatus').textContent = 'Video connection interrupted. You can press Next person to try again.';
+      }
+    };
+    if (isInitiator) {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      state.socket.emit('video:offer', { sdp: pc.localDescription });
+    }
+  }
+
   function connectSocket() {
     if (state.socket) state.socket.disconnect();
 
@@ -1148,6 +1225,17 @@
       state.queued = false;
       state.matched = true;
       state.partner = data.partner;
+      state.currentChatMode = data.videoMode ? 'video' : 'text';
+      if (data.videoMode) {
+        $('videoPanel').classList.remove('hidden');
+        $('videoStatus').textContent = 'Connecting video…';
+        createVideoPeer(Boolean(data.isInitiator)).catch(() => {
+          $('videoStatus').textContent = 'Could not establish video. Try Next person.';
+          toast('Video connection failed.');
+        });
+      } else {
+        stopVideo();
+      }
 
       $('statusPanel').classList.add('hidden');
       $('welcomePanel').classList.add('hidden');
@@ -1163,6 +1251,32 @@
       $('messageInput').focus();
     });
 
+    state.socket.on('video:offer', async data => {
+      if (!state.localStream || !data || !data.sdp) return;
+      try {
+        if (!state.peerConnection) await createVideoPeer(false);
+        const pc = state.peerConnection;
+        await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        state.socket.emit('video:answer', { sdp: pc.localDescription });
+      } catch (error) {
+        toast('Could not connect video. Try Next person.');
+      }
+    });
+
+    state.socket.on('video:answer', async data => {
+      if (!state.peerConnection || !data || !data.sdp) return;
+      try { await state.peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp)); }
+      catch (error) { toast('Video connection failed. Try Next person.'); }
+    });
+
+    state.socket.on('video:ice-candidate', async data => {
+      if (!state.peerConnection || !data || !data.candidate) return;
+      try { await state.peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate)); }
+      catch (error) { /* A stale candidate can arrive during a fast skip. */ }
+    });
+
     state.socket.on('chat:message', msg => addMessage(msg));
     state.socket.on('chat:typing', data => {
       $('typingLine').classList.toggle('hidden', !data.typing);
@@ -1172,6 +1286,8 @@
       const wasMatched = state.matched;
       state.matched = false;
       state.partner = null;
+      stopVideo();
+      state.currentChatMode = 'text';
 
       $('typingLine').classList.add('hidden');
       $('messageForm').classList.add('hidden');
@@ -1185,6 +1301,8 @@
 
     state.socket.on('chat:idle', () => {
       state.queued = false;
+      stopVideo();
+      state.currentChatMode = 'text';
       $('statusPanel').classList.add('hidden');
       $('welcomePanel').classList.remove('hidden');
       $('messages').classList.add('hidden');
@@ -1240,25 +1358,37 @@
     scrollMessagesToBottom();
   }
 
-  function findChat() {
+  function findChat(mode = 'text') {
     if (!state.socket || !state.socket.connected) {
       toast('Connecting… please try again in a moment.');
       return;
     }
 
+    if (mode !== 'video') stopVideo();
+    state.currentChatMode = mode;
     $('messages').innerHTML = '';
     $('messages').classList.remove('hidden');
     $('welcomePanel').classList.add('hidden');
     $('statusPanel').classList.remove('hidden');
     $('statusTitle').textContent = 'Finding your next chat…';
     $('statusText').textContent = 'Hang tight while we find someone available.';
-    state.socket.emit('match:find');
+    state.socket.emit('match:find', { mode });
   }
 
-  $('startBtn').addEventListener('click', findChat);
-  $('nextBtn').addEventListener('click', findChat);
+  $('startBtn').addEventListener('click', () => findChat('text'));
+  $('startVideoBtn').addEventListener('click', startVideoChat);
+  $('nextBtn').addEventListener('click', () => {
+    if (state.currentChatMode === 'video') {
+      stopVideo();
+      startVideoChat();
+    } else {
+      findChat('text');
+    }
+  });
 
   $('cancelBtn').addEventListener('click', () => {
+    stopVideo();
+    state.currentChatMode = 'text';
     if (state.socket) state.socket.emit('chat:leave');
     resetChat();
   });
