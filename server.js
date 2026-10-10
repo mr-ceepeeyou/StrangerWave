@@ -38,8 +38,7 @@ const db = {
   reports: [],
   friendRequests: [],
   friendships: [],
-  privateMessages: [],
-  profileReveals: []
+  privateMessages: []
 };
 
 let saveQueue = Promise.resolve();
@@ -51,7 +50,6 @@ function ensureArrays(data) {
   data.friendRequests ||= [];
   data.friendships ||= [];
   data.privateMessages ||= [];
-  data.profileReveals ||= [];
   return data;
 }
 
@@ -108,7 +106,8 @@ function publicUser(user) {
     displayName: user.displayName || user.username,
     bio: user.bio || '',
     avatar: user.avatar || '🟣',
-    publicPhotos: Array.isArray(user.publicPhotos) ? user.publicPhotos : []
+    interests: Array.isArray(user.interests) ? user.interests.slice(0, 8) : [],
+    accent: ['purple', 'pink', 'blue', 'green', 'orange'].includes(user.accent) ? user.accent : 'purple'
   };
 }
 
@@ -159,7 +158,7 @@ const io = new Server(server, {
 });
 
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '20kb' }));
 
 app.use('/api', rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -274,33 +273,6 @@ app.get('/api/profile/:username', (req, res) => {
   });
 });
 
-// MUTUAL PROFILE REVEAL: both people must request before the full profile is revealed.
-app.get('/api/reveal/:username', (req, res) => {
-  const viewer = getAuthenticatedUser(req);
-  if (!viewer) return res.status(401).json({ error: 'Sign in first.' });
-  const target = db.users.find(u => u.username.toLowerCase() === String(req.params.username || '').toLowerCase());
-  if (!target) return res.status(404).json({ error: 'User not found.' });
-  const pair = [viewer.id, target.id].sort().join(':');
-  const entry = db.profileReveals.find(r => r.pair === pair);
-  res.json({ requested: !!entry && entry.requestedBy.includes(viewer.id), mutual: !!entry && entry.requestedBy.includes(viewer.id) && entry.requestedBy.includes(target.id) });
-});
-
-app.post('/api/reveal/request', async (req, res) => {
-  const viewer = getAuthenticatedUser(req);
-  if (!viewer) return res.status(401).json({ error: 'Sign in first.' });
-  const target = db.users.find(u => u.username.toLowerCase() === String(req.body.username || '').toLowerCase());
-  if (!target) return res.status(404).json({ error: 'User not found.' });
-  if (target.id === viewer.id) return res.status(400).json({ error: 'You cannot reveal your profile to yourself.' });
-  if (isBlocked(viewer.id, target.id)) return res.status(403).json({ error: 'You cannot request a reveal with this user.' });
-  const pair = [viewer.id, target.id].sort().join(':');
-  let entry = db.profileReveals.find(r => r.pair === pair);
-  if (!entry) { entry = { pair, userA: [viewer.id, target.id].sort()[0], userB: [viewer.id, target.id].sort()[1], requestedBy: [], createdAt: new Date().toISOString() }; db.profileReveals.push(entry); }
-  if (!entry.requestedBy.includes(viewer.id)) entry.requestedBy.push(viewer.id);
-  await saveData();
-  const mutual = entry.requestedBy.includes(target.id);
-  res.json({ ok: true, mutual, message: mutual ? 'You both agreed. Profile reveal unlocked!' : 'Reveal request sent. It unlocks when they agree too.' });
-});
-
 // UPDATE PROFILE
 app.post('/api/profile', async (req, res) => {
   const user = getAuthenticatedUser(req);
@@ -329,18 +301,15 @@ app.post('/api/profile', async (req, res) => {
   if (!allowedAvatars.includes(avatar)) {
     return res.status(400).json({ error: 'Choose an available avatar.' });
   }
-
-  const publicPhotos = Array.isArray(req.body.publicPhotos) ? req.body.publicPhotos : (user.publicPhotos || []);
-  if (publicPhotos.length > 3 || publicPhotos.some(photo =>
-    typeof photo !== 'string' || !/^data:image\/(png|jpeg|webp|gif);base64,/.test(photo) || photo.length > 280000
-  )) {
-    return res.status(400).json({ error: 'Add up to 3 photos, each under about 200 KB, in PNG, JPG, WEBP or GIF format.' });
-  }
+  const allowedInterests = ['Gaming', 'Music', 'Anime', 'Movies', 'Art', 'Sports', 'Memes', 'Tech', 'Travel', 'Books', 'Fitness', 'Animals'];
+  const interests = Array.isArray(req.body.interests) ? [...new Set(req.body.interests.map(x => String(x)))].filter(x => allowedInterests.includes(x)).slice(0, 8) : [];
+  const accent = ['purple', 'pink', 'blue', 'green', 'orange'].includes(String(req.body.accent)) ? String(req.body.accent) : 'purple';
 
   user.displayName = displayName;
   user.bio = bio;
   user.avatar = avatar;
-  user.publicPhotos = publicPhotos;
+  user.interests = interests;
+  user.accent = accent;
   user.profileUpdatedAt = new Date().toISOString();
 
   await saveData();
